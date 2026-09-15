@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>赛事详情分析</title>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box;font-family:system-ui, sans-serif;}
+        body{background:#f4f7fa;padding:12px;color:#222;}
+        .disclaimer{background:#fff3cd;border:1px solid #ffeeba;padding:12px;border-radius:8px;margin-bottom:16px;color:#856404;}
+        .container{max-width:700px;margin:0 auto;}
+        .back{display:inline-block;margin-bottom:12px;color:#0066cc;cursor:pointer;}
+        .card{background:#fff;border-radius:10px;padding:16px;margin-bottom:12px;box-shadow:0 1px 3px #ddd;}
+        h2{margin-bottom:8px;font-size:20px;}
+        .item{margin:8px 0;font-size:15px;line-height:1.6;}
+        .label{font-weight:bold;color:#333;}
+        .summary{background:#eef6ff;padding:12px;border-radius:8px;margin-top:10px;}
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="disclaimer">
+        ⚠️免责声明：本页面所有数据、统计分析仅基于历史赛事数据做统计学推演，足球比赛存在大量偶然因素，所有内容不构成任何投注建议，严禁用于博彩。
+    </div>
+    <div class="back" onclick="window.location.href='index.html'">← 返回赛程列表</div>
+    <div id="detailBox"></div>
+</div>
+
+<script>
+async function loadDetail(){
+    const urlParams = new URLSearchParams(window.location.search);
+    const matchId = urlParams.get('id');
+    if(!matchId){
+        document.getElementById('detailBox').innerText = "未找到本场比赛";
+        return;
+    }
+    const res = await fetch('./match_analysis.json');
+    const analysisData = await res.json();
+    const match = analysisData.find(item=>item.id === matchId);
+    if(!match){
+        document.getElementById('detailBox').innerText = "暂无该场比赛分析数据";
+        return;
+    }
+    document.getElementById('detailBox').innerHTML = `
+        <div class="card">
+            <h2>${match.home} VS ${match.away}</h2>
+            <div class="item"><span class="label">联赛：</span>${match.league}</div>
+            <div class="item"><span class="label">比赛时间：</span>${match.date} ${match.time}</div>
+            <div class="item"><span class="label">预期进球xG：</span>${match.xg}</div>
+        </div>
+        <div class="card">
+            <div class="item"><span class="label">总进球概率分布</span></div>
+            <div class="item">0球：${match.prob_0}</div>
+            <div class="item">1球：${match.prob_1}</div>
+            <div class="item">2球：${match.prob_2}</div>
+            <div class="item">3球：${match.prob_3}</div>
+            <div class="item">4球及以上：${match.prob_4plus}</div>
+            <div class="item"><span class="label">2.5球大球概率：</span>${match.over25}</div>
+            <div class="item"><span class="label">2.5球小球概率：</span>${match.under25}</div>
+        </div>
+        <div class="card">
+            <div class="item"><span class="label">赛果统计概率</span></div>
+            <div class="item">主胜概率：${match.home_win}</div>
+            <div class="item">平局概率：${match.draw}</div>
+            <div class="item">客胜概率：${match.away_win}</div>
+        </div>
+        <div class="card summary">
+            <div class="item"><span class="label">综合分析总结：</span></div>
+            <div class="item">${match.summary}</div>
+        </div>
+    `;
+}
+loadDetail();
+</script>
+</body>
+</html>

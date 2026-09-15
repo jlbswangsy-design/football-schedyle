@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>足球赛事赛程与数据分析</title>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box;font-family:system-ui, sans-serif;}
+        body{background:#f4f7fa;padding:12px;color:#222;}
+        .disclaimer{background:#fff3cd;border:1px solid #ffeeba;padding:12px;border-radius:8px;margin-bottom:16px;color:#856404;}
+        .container{max-width:900px;margin:0 auto;}
+        h1{text-align:center;margin-bottom:16px;font-size:22px;}
+        .date-filter{margin-bottom:16px;text-align:center;}
+        select{padding:8px;border-radius:6px;border:1px solid #ccc;font-size:16px;}
+        .match-card{background:#fff;padding:14px;border-radius:10px;margin-bottom:10px;cursor:pointer;box-shadow:0 1px 3px #ddd;}
+        .match-card:hover{background:#f8f9fa;}
+        .league{font-size:13px;color:#666;margin-bottom:6px;}
+        .row{display:flex;justify-content:space-between;align-items:center;}
+        .team{font-size:16px;width:40%;}
+        .time-score{text-align:center;font-weight:bold;width:20%;}
+        .status-upcoming{color:#0066cc;}
+        .status-finished{color:#28a745;}
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="disclaimer">
+        ⚠️免责声明：本页面所有数据、统计分析仅基于历史赛事数据做统计学推演，足球比赛存在大量偶然因素，所有内容不构成任何投注建议，严禁用于博彩。
+    </div>
+    <h1>全球足球赛事排期 & 赛果</h1>
+    <div class="date-filter">
+        <select id="dateSelect">
+            <option value="all">全部日期</option>
+        </select>
+    </div>
+    <div id="matchList"></div>
+</div>
+
+<script>
+let allMatches = [];
+const dateSelect = document.getElementById('dateSelect');
+const matchListEl = document.getElementById('matchList');
+
+async function loadSchedule(){
+    const res = await fetch('./schedule.json');
+    allMatches = await res.json();
+    renderDateOption();
+    renderMatches();
+}
+
+function renderDateOption(){
+    const dateSet = new Set();
+    allMatches.forEach(m=>dateSet.add(m.date));
+    Array.from(dateSet).sort().forEach(d=>{
+        const opt = document.createElement('option');
+        opt.value = d;
+        opt.innerText = d;
+        dateSelect.appendChild(opt);
+    })
+}
+
+function renderMatches(){
+    const selectedDate = dateSelect.value;
+    let list = allMatches;
+    if(selectedDate !== 'all'){
+        list = allMatches.filter(m=>m.date === selectedDate);
+    }
+    matchListEl.innerHTML = '';
+    list.forEach(match=>{
+        const card = document.createElement('div');
+        card.className = 'match-card';
+        card.onclick = ()=> window.location.href = `detail.html?id=${match.id}`;
+        const statusClass = match.status === 'finished' ? 'status-finished' : 'status-upcoming';
+        card.innerHTML = `
+            <div class="league">${match.league}</div>
+            <div class="row">
+                <div class="team">${match.home}</div>
+                <div class="time-score ${statusClass}">${match.status === 'finished' ? match.score : match.time}</div>
+                <div class="team" style="text-align:right">${match.away}</div>
+            </div>
+        `;
+        matchListEl.appendChild(card);
+    })
+}
+dateSelect.addEventListener('change', renderMatches);
+loadSchedule();
+</script>
+</body>
+</html>
