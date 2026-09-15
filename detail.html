@@ -12,9 +12,16 @@
         .back{display:inline-block;margin-bottom:12px;color:#0066cc;cursor:pointer;}
         .card{background:#fff;border-radius:10px;padding:16px;margin-bottom:12px;box-shadow:0 1px 3px #ddd;}
         h2{margin-bottom:8px;font-size:20px;}
+        h3{margin-bottom:8px;font-size:16px;color:#0066cc;}
         .item{margin:8px 0;font-size:15px;line-height:1.6;}
         .label{font-weight:bold;color:#333;}
         .summary{background:#eef6ff;padding:12px;border-radius:8px;margin-top:10px;}
+        .score-big{font-size:30px;font-weight:bold;color:#28a745;text-align:center;margin:8px 0;}
+        .cmp-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed #eee;font-size:15px;}
+        .cmp-row:last-child{border-bottom:none;}
+        .ok{color:#28a745;font-weight:bold;}
+        .miss{color:#c0392b;font-weight:bold;}
+        .note{font-size:12px;color:#999;margin-top:8px;}
     </style>
 </head>
 <body>
@@ -27,29 +34,51 @@
 </div>
 
 <script>
-async function loadDetail(){
-    const urlParams = new URLSearchParams(window.location.search);
-    const matchId = urlParams.get('id');
-    if(!matchId){
-        document.getElementById('detailBox').innerText = "未找到本场比赛";
-        return;
+function parseScore(score){
+    if(!score || score.indexOf('-') < 0) return null;
+    const p = score.split('-');
+    const h = parseInt(p[0], 10), a = parseInt(p[1], 10);
+    if(isNaN(h) || isNaN(a)) return null;
+    return {h: h, a: a, total: h + a};
+}
+
+function renderDetail(match, sched){
+    const isFin = sched && sched.status === 'finished';
+    const actual = isFin ? parseScore(sched.score) : null;
+
+    // 赛前预测与实际赛果对比
+    let cmpHtml = '';
+    if(isFin && actual){
+        const resultTxt = actual.h > actual.a ? '主胜' : (actual.h === actual.a ? '平局' : '客胜');
+        const probs = [{'k':'主胜','v':parseInt(match.home_win)},{'k':'平局','v':parseInt(match.draw)},{'k':'客胜','v':parseInt(match.away_win)}];
+        probs.sort((x,y) => y.v - x.v);
+        const best = probs[0];
+        const hitResult = best.k === resultTxt;
+        const hitOU = actual.total > 2.5 ? match.over25 : match.under25;
+        const ouHit = (actual.total > 2.5) === (parseInt(match.over25) >= parseInt(match.under25));
+        cmpHtml = `
+        <div class="card">
+            <h3>🎯 赛前预测 vs 实际赛果</h3>
+            <div class="score-big">${sched.score}</div>
+            <div class="cmp-row"><span>赛果预测（最高概率项）</span><span>${best.k} ${best.v}% ${hitResult ? '<span class="ok">✔ 预测命中</span>' : '<span class="miss">✘ 未命中</span>'}</span></div>
+            <div class="cmp-row"><span>实际赛果</span><span>${resultTxt}（主 ${actual.h} : ${actual.a} 客）</span></div>
+            <div class="cmp-row"><span>实际总进球</span><span>${actual.total} 球</span></div>
+            <div class="cmp-row"><span>实际大小球（2.5球）</span><span>${actual.total > 2.5 ? '大2.5球' : '小2.5球'}，赛前倾向：${hitOU ? '<span class="ok">✔</span>' : '<span class="miss">✘</span>'}</span></div>
+            <div class="note">预测为赛前基于历史数据生成的存档，仅作统计学记录对照，不构成任何建议。</div>
+        </div>`;
     }
-    const res = await fetch('./match_analysis.json');
-    const analysisData = await res.json();
-    const match = analysisData.find(item=>item.id === matchId);
-    if(!match){
-        document.getElementById('detailBox').innerText = "暂无该场比赛分析数据";
-        return;
-    }
+
     document.getElementById('detailBox').innerHTML = `
         <div class="card">
             <h2>${match.home} VS ${match.away}</h2>
             <div class="item"><span class="label">联赛：</span>${match.league}</div>
             <div class="item"><span class="label">比赛时间：</span>${match.date} ${match.time}</div>
+            ${isFin ? '<div class="item"><span class="label">比赛状态：</span>已完赛</div>' : '<div class="item"><span class="label">比赛状态：</span>未开赛</div>'}
             <div class="item"><span class="label">预期进球xG：</span>${match.xg}</div>
         </div>
+        ${cmpHtml}
         <div class="card">
-            <div class="item"><span class="label">总进球概率分布</span></div>
+            <div class="item"><span class="label">总进球概率分布（赛前推演）</span></div>
             <div class="item">0球：${match.prob_0}</div>
             <div class="item">1球：${match.prob_1}</div>
             <div class="item">2球：${match.prob_2}</div>
@@ -59,7 +88,7 @@ async function loadDetail(){
             <div class="item"><span class="label">2.5球小球概率：</span>${match.under25}</div>
         </div>
         <div class="card">
-            <div class="item"><span class="label">赛果统计概率</span></div>
+            <div class="item"><span class="label">赛果统计概率（赛前推演）</span></div>
             <div class="item">主胜概率：${match.home_win}</div>
             <div class="item">平局概率：${match.draw}</div>
             <div class="item">客胜概率：${match.away_win}</div>
@@ -69,6 +98,44 @@ async function loadDetail(){
             <div class="item">${match.summary}</div>
         </div>
     `;
+}
+
+async function loadDetail(){
+    const urlParams = new URLSearchParams(window.location.search);
+    const matchId = urlParams.get('id');
+    if(!matchId){
+        document.getElementById('detailBox').innerText = "未找到本场比赛";
+        return;
+    }
+    let scheduleData = [], analysisData = [];
+    try{
+        const results = await Promise.all([
+            fetch('./schedule.json').then(r => r.json()),
+            fetch('./match_analysis.json').then(r => r.json())
+        ]);
+        scheduleData = results[0];
+        analysisData = results[1];
+    }catch(e){
+        document.getElementById('detailBox').innerText = "数据加载失败，请稍后重试";
+        return;
+    }
+    const sched = scheduleData.find(item => item.id === matchId);
+    const match = analysisData.find(item => item.id === matchId);
+    if(!match && !sched){
+        document.getElementById('detailBox').innerText = "暂无该场比赛数据";
+        return;
+    }
+    if(!match){
+        document.getElementById('detailBox').innerHTML = `
+            <div class="card">
+                <h2>${sched.home} VS ${sched.away}</h2>
+                <div class="item"><span class="label">联赛：</span>${sched.league}</div>
+                <div class="item"><span class="label">比赛时间：</span>${sched.date} ${sched.time}</div>
+                <div class="item">暂无该场比赛分析数据（可能因赛前两队近期数据不足被跳过）</div>
+            </div>`;
+        return;
+    }
+    renderDetail(match, sched);
 }
 loadDetail();
 </script>

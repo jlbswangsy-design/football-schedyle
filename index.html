@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>足球赛事赛程与数据分析</title>
+    <title>全球足球赛事排期 & 赛果</title>
     <style>
         *{margin:0;padding:0;box-sizing:border-box;font-family:system-ui, sans-serif;}
         body{background:#f4f7fa;padding:12px;color:#222;}
@@ -13,13 +13,16 @@
         .date-filter{margin-bottom:16px;text-align:center;}
         select{padding:8px;border-radius:6px;border:1px solid #ccc;font-size:16px;}
         .match-card{background:#fff;padding:14px;border-radius:10px;margin-bottom:10px;cursor:pointer;box-shadow:0 1px 3px #ddd;}
-        .match-card:hover{background:#f8f9fa;}
+        .match-card:hover{background:#f0f6ff;}
         .league{font-size:13px;color:#666;margin-bottom:6px;}
         .row{display:flex;justify-content:space-between;align-items:center;}
-        .team{font-size:16px;width:40%;}
-        .time-score{text-align:center;font-weight:bold;width:20%;}
+        .team{font-size:16px;width:38%;}
+        .mid{text-align:center;width:24%;}
+        .mid .t{font-size:15px;font-weight:bold;}
+        .mid .s{font-size:12px;color:#888;}
         .status-upcoming{color:#0066cc;}
         .status-finished{color:#28a745;}
+        .empty-tip{text-align:center;color:#999;padding:30px 0;}
     </style>
 </head>
 <body>
@@ -30,7 +33,9 @@
     <h1>全球足球赛事排期 & 赛果</h1>
     <div class="date-filter">
         <select id="dateSelect">
-            <option value="all">全部日期</option>
+            <option value="__today">今日赛程</option>
+            <option value="__week">未来7天未开赛</option>
+            <option value="__all">全部日期</option>
         </select>
     </div>
     <div id="matchList"></div>
@@ -38,49 +43,103 @@
 
 <script>
 let allMatches = [];
+let todayStr = '';
 const dateSelect = document.getElementById('dateSelect');
 const matchListEl = document.getElementById('matchList');
 
+function fmtLocalDate(d){
+    const p = n => String(n).padStart(2,'0');
+    return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate());
+}
+function daysDiff(dateStr){
+    const a = new Date(todayStr + 'T00:00:00');
+    const b = new Date(dateStr + 'T00:00:00');
+    return Math.round((a - b) / 86400000);
+}
+// 完赛超过3天的比赛不再显示
+function isVisible(m){
+    if(m.status === 'upcoming') return true;
+    return daysDiff(m.date) <= 3;
+}
+
 async function loadSchedule(){
+    todayStr = fmtLocalDate(new Date());
     const res = await fetch('./schedule.json');
-    allMatches = await res.json();
+    allMatches = (await res.json()).filter(isVisible);
     renderDateOption();
+    restoreSelection();
     renderMatches();
 }
 
 function renderDateOption(){
     const dateSet = new Set();
-    allMatches.forEach(m=>dateSet.add(m.date));
-    Array.from(dateSet).sort().forEach(d=>{
+    allMatches.forEach(m => dateSet.add(m.date));
+    Array.from(dateSet).sort().forEach(d => {
         const opt = document.createElement('option');
         opt.value = d;
-        opt.innerText = d;
+        opt.innerText = d + (d === todayStr ? '（今天）' : '');
         dateSelect.appendChild(opt);
-    })
+    });
+}
+
+function restoreSelection(){
+    // 从详情页返回时恢复上次选择的筛选条件
+    const saved = sessionStorage.getItem('fb_date_sel');
+    if(saved){
+        for(const o of dateSelect.options){
+            if(o.value === saved){ dateSelect.value = saved; return; }
+        }
+    }
+    dateSelect.value = '__today';
+}
+
+function getFilteredList(){
+    const v = dateSelect.value;
+    if(v === '__today'){
+        const today = allMatches.filter(m => m.date === todayStr);
+        if(today.length) return today;
+        // 今天没有比赛时显示未来3天内的比赛
+        const future = allMatches.filter(m => m.status === 'upcoming' && daysDiff(m.date) >= 0 && daysDiff(m.date) <= 3);
+        return future.length ? future : allMatches.filter(m => m.status === 'upcoming').slice(0, 30);
+    }
+    if(v === '__week'){
+        return allMatches.filter(m => m.status === 'upcoming' && daysDiff(m.date) <= 7);
+    }
+    if(v === '__all') return allMatches;
+    return allMatches.filter(m => m.date === v);
 }
 
 function renderMatches(){
-    const selectedDate = dateSelect.value;
-    let list = allMatches;
-    if(selectedDate !== 'all'){
-        list = allMatches.filter(m=>m.date === selectedDate);
-    }
+    const list = getFilteredList();
     matchListEl.innerHTML = '';
-    list.forEach(match=>{
+    if(!list.length){
+        matchListEl.innerHTML = '<div class="empty-tip">该筛选条件下暂无比赛</div>';
+        return;
+    }
+    list.forEach(match => {
         const card = document.createElement('div');
         card.className = 'match-card';
-        card.onclick = ()=> window.location.href = `detail.html?id=${match.id}`;
-        const statusClass = match.status === 'finished' ? 'status-finished' : 'status-upcoming';
+        card.onclick = () => {
+            sessionStorage.setItem('fb_date_sel', dateSelect.value);
+            window.location.href = 'detail.html?id=' + match.id;
+        };
+        const isFin = match.status === 'finished';
+        const statusCls = isFin ? 'status-finished' : 'status-upcoming';
+        const midTop = isFin ? match.score : match.time;
+        const midSub = isFin ? '已完赛' : '未开赛';
         card.innerHTML = `
-            <div class="league">${match.league}</div>
+            <div class="league">${match.league} · ${match.date}</div>
             <div class="row">
                 <div class="team">${match.home}</div>
-                <div class="time-score ${statusClass}">${match.status === 'finished' ? match.score : match.time}</div>
+                <div class="mid ${statusCls}">
+                    <div class="t">${midTop}</div>
+                    <div class="s">${midSub}</div>
+                </div>
                 <div class="team" style="text-align:right">${match.away}</div>
             </div>
         `;
         matchListEl.appendChild(card);
-    })
+    });
 }
 dateSelect.addEventListener('change', renderMatches);
 loadSchedule();
